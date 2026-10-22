@@ -1,0 +1,219 @@
+<Window x:Class="ModoTV.SetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Configurar Modo TV" Width="444" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" WindowStartupLocation="CenterScreen" Topmost="True"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <Style x:Key="Field" TargetType="TextBox">
+                <Setter Property="Foreground" Value="#F2F2F4"/>
+                <Setter Property="CaretBrush" Value="#F2F2F4"/>
+                <Setter Property="SelectionBrush" Value="#4C9BFF"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border x:Name="Box" Background="{StaticResource TileBg}" BorderBrush="{StaticResource TileLine}"
+                                    BorderThickness="1" CornerRadius="10" Padding="10,8">
+                                <ScrollViewer x:Name="PART_ContentHost"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentLine}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="Link" TargetType="Button">
+                <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <TextBlock x:Name="T" Text="{TemplateBinding Content}" FontSize="12" FontWeight="SemiBold"/>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="T" Property="TextDecorations" Value="Underline"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="T" Property="Opacity" Value="0.4"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid x:Name="Root" Margin="16" TextElement.Foreground="#F2F2F4"
+          TextElement.FontFamily="Segoe UI Variable Text, Segoe UI" TextElement.FontSize="12">
+        <Border CornerRadius="20" Background="{StaticResource Surface}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="3" Direction="270" Opacity="0.55" Color="Black"/>
+            </Border.Effect>
+        </Border>
+        <Border CornerRadius="20" Background="{StaticResource Surface}" BorderBrush="#3C3C41" BorderThickness="1">
+            <StackPanel Margin="16,14,16,16">
+
+                <!-- Cabeçalho (arrastável) -->
+                <Grid x:Name="Header" Background="Transparent" Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Width="34" Height="34" CornerRadius="10" Background="#24324A" VerticalAlignment="Top">
+                        <Path Width="18" Height="18" Stretch="Uniform" Stroke="#7DB4FF" StrokeThickness="1.6"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                              Data="M2.5,4.5 H21.5 V16.5 H2.5 Z M7.5,20 L9.5,16.5 M16.5,20 L14.5,16.5"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="11,0,8,0">
+                        <TextBlock Text="Configurar Modo TV" FontSize="16" FontWeight="SemiBold"
+                                   FontFamily="Segoe UI Variable Display, Segoe UI"/>
+                        <TextBlock Text="Procuramos sua TV automaticamente. Confira se está certo." TextWrapping="Wrap"
+                                   Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <Button x:Name="CloseButton" Grid.Column="2" Style="{StaticResource Round}" Width="30" Height="30"
+                            Background="Transparent" BorderBrush="Transparent" Foreground="{StaticResource Muted}"
+                            VerticalAlignment="Top" ToolTip="Fechar">
+                        <Path Style="{StaticResource Glyph}" Width="11" Height="11" Data="M5,5 L19,19 M19,5 L5,19"/>
+                    </Button>
+                </Grid>
+
+                <!-- Escolha da TV -->
+                <Border Style="{StaticResource CardBox}">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,10">
+                            <TextBlock Text="Qual é a sua TV?" FontSize="13" FontWeight="SemiBold"/>
+                            <Button x:Name="RescanButton" Style="{StaticResource Link}" Content="Detectar de novo" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <ItemsControl x:Name="Candidates">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource Tile}" Tag="{Binding Tag}" Padding="12,10" Margin="0,0,0,6"
+                                            HorizontalContentAlignment="Stretch" Click="Candidate_Click">
+                                        <Grid Width="326">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Path Style="{StaticResource Glyph}" Width="22" Height="22" Data="{Binding Icon}"/>
+                                            <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Detail}" FontSize="11.5" Opacity="0.7" Margin="0,1,0,0"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="2" CornerRadius="6" Padding="7,2" VerticalAlignment="Center"
+                                                    Background="#1E3A2A" Visibility="{Binding BadgeVisibility}">
+                                                <TextBlock Text="Parece uma TV" FontSize="10.5" FontWeight="SemiBold" Foreground="#5FD38D"/>
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="NoneHint" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{StaticResource Muted}"
+                                   Text="Nenhuma tela encontrada. Ligue a TV com o cabo HDMI conectado e clique em Detectar de novo."/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Resumo do que vai acontecer -->
+                <Border Style="{StaticResource CardBox}" Margin="0,8,0,0">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="104"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Monitores" Foreground="{StaticResource Muted}"/>
+                            <TextBlock x:Name="DeskText" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="1" Text="Som da TV" Foreground="{StaticResource Muted}" Margin="0,8,0,0"/>
+                            <TextBlock x:Name="AudioText" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                        </Grid>
+
+                        <TextBlock Text="Nome no painel" FontSize="13" FontWeight="SemiBold" Margin="0,14,0,8"/>
+                        <TextBox x:Name="NameBox" Style="{StaticResource Field}" MaxLength="28"/>
+
+                        <UniformGrid Columns="2" Margin="0,12,0,0">
+                            <Button x:Name="StartupChip" Style="{StaticResource Tile}" Margin="0,0,4,0" Padding="0,8" Tag="on">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Style="{StaticResource Glyph}" Width="14" Height="14"
+                                          Data="M3,3 H10.8 V10.8 H3 Z M13.2,3 H21 V10.8 H13.2 Z M3,13.2 H10.8 V21 H3 Z M13.2,13.2 H21 V21 H13.2 Z"/>
+                                    <TextBlock Text="Iniciar com o Windows" Margin="7,0,0,0" FontSize="11.5" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="AudioChip" Style="{StaticResource Tile}" Margin="4,0,0,0" Padding="0,8" Tag="on">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Style="{StaticResource Glyph}" Width="15" Height="15"
+                                          Data="M3.5,9 H7.5 L12.5,5 V19 L7.5,15 H3.5 Z M16,9.2 A4,4 0 0 1 16,14.8 M18.6,6.6 A7.6,7.6 0 0 1 18.6,17.4"/>
+                                    <TextBlock Text="Levar o som junto" Margin="7,0,0,0" FontSize="11.5" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </UniformGrid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Atalho do controle: mostra o controle detectado e permite gravar outra combinação -->
+                <Border Style="{StaticResource CardBox}" Margin="0,8,0,0">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Text="Atalho no controle" FontSize="13" FontWeight="SemiBold"/>
+                            <Button x:Name="ResetChordButton" Style="{StaticResource Link}" Content="Voltar ao padrão" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <Ellipse x:Name="PadDot" Width="6" Height="6" Fill="#6E6E75" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="PadText" Text="Procurando controle…" Foreground="{StaticResource Muted}" Margin="7,0,0,0"/>
+                        </StackPanel>
+                        <Grid x:Name="ChordBox" Margin="0,10,0,0">
+                            <Border Background="{StaticResource TileBg}" BorderBrush="{StaticResource TileLine}" BorderThickness="1" CornerRadius="10"/>
+                            <Border x:Name="ChordFill" Background="#1E3350" CornerRadius="10" HorizontalAlignment="Left" Width="0"/>
+                            <Grid Margin="12,10">
+                                <TextBlock x:Name="ChordText" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,0,90,0"/>
+                                <TextBlock x:Name="ChordHint" Text="segurar 1,5 s" Foreground="{StaticResource Muted}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Grid>
+                        <Button x:Name="RecordButton" Style="{StaticResource Tile}" Margin="0,8,0,0" Padding="0,8">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="9" Height="9" Fill="#E0453A" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="RecordText" Text="Gravar outro atalho" Margin="8,0,0,0" FontSize="12" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock x:Name="StatusText" TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="4,12,4,0"
+                           Text="Dica: use “Testar” para ver a imagem ir para a TV por 10 segundos antes de salvar."/>
+
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="TestButton" Style="{StaticResource Tile}" Margin="0,0,4,0" Padding="0,10">
+                        <TextBlock Text="Testar 10 s" FontSize="13" FontWeight="SemiBold"/>
+                    </Button>
+                    <Button x:Name="SaveButton" Grid.Column="1" Style="{StaticResource Primary}" Margin="4,0,0,0">
+                        <TextBlock Text="Está certo, salvar" FontSize="13" FontWeight="SemiBold"/>
+                    </Button>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

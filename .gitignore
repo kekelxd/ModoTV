@@ -1,0 +1,13 @@
+# Build
+bin/
+obj/
+dist/
+
+# Configuração local (fica em %LOCALAPPDATA%\ModoTV, mas por garantia)
+config.json
+*.bak-*
+
+# IDEs
+.vs/
+.vscode/
+*.user
