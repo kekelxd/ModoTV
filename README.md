@@ -56,3 +56,9 @@ dotnet publish ModoTV/ModoTV.csproj -c Release -r win-x64 --self-contained true 
 `ModoTV.exe tv | mesa | toggle | status | teste` — `status` lista telas, áudio e controle; `teste` vai para a TV por 10 s e volta.
 
 A configuração fica em `%LOCALAPPDATA%\ModoTV\config.json`.
+
+## Licença
+
+Copyright (C) 2026 kekelxd
+
+[GPL-3.0](LICENSE): você pode usar, estudar, modificar e redistribuir o Modo TV, desde que versões modificadas distribuídas também sejam GPL-3.0 com o código-fonte aberto. O software é fornecido sem garantia.
