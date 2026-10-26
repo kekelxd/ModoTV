@@ -17,6 +17,8 @@ public class Config
 
     // ---------- Preferências ----------
     public bool SwitchAudio { get; set; } = true;
+    // No modo mesa, desliga a TV de novo se o Windows reativá-la sozinho (ao ligar a TV).
+    public bool KeepTvOffAtDesk { get; set; } = true;
     public bool ControllerEnabled { get; set; } = true;
     // Quanto tempo segurar o atalho do controle para trocar.
     public int ControllerHoldMs { get; set; } = 1500;

@@ -24,6 +24,10 @@ public class TrayApp : ApplicationContext
     TrayPopup popup;
     SetupWindow setup;
     int busy;
+    // Modo que o usuário escolheu por último. Se o Windows mudar as telas sozinho, é a referência.
+    volatile bool wantTv;
+    DateTime ignoreDisplayUntil;
+    System.Windows.Forms.Timer displayDebounce;
     string lastMessage;
 
     public TrayApp(Config cfg)
@@ -62,6 +66,39 @@ public class TrayApp : ApplicationContext
         // Primeira execução: abre a configuração. Depois, só guarda a disposição da mesa se faltar.
         if (!cfg.IsConfigured) ui.Post(_ => ShowSetup(), null);
         else if (cfg.DeskLayout.Count == 0 && !switcher.IsTvMode()) switcher.RememberDesk();
+
+        // Ao ligar a TV, o Windows costuma reativá-la como tela estendida (e mandar o som para ela).
+        // No modo mesa, o app desfaz isso. O evento chega várias vezes seguidas, então espera assentar.
+        wantTv = cfg.IsConfigured && switcher.IsTvMode();
+        displayDebounce = new System.Windows.Forms.Timer { Interval = 1500 };
+        displayDebounce.Tick += (_, _) => { displayDebounce.Stop(); GuardDesk(); };
+        SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
+        ui.Post(_ => GuardDesk(), null); // também ao iniciar (ex.: PC ligado com a TV já ligada)
+    }
+
+    void OnDisplayChanged(object sender, EventArgs e)
+    {
+        if (DateTime.UtcNow < ignoreDisplayUntil) return; // mudança feita pelo próprio app
+        ui.Post(_ => { displayDebounce.Stop(); displayDebounce.Start(); }, null);
+    }
+
+    void GuardDesk()
+    {
+        if (!cfg.KeepTvOffAtDesk || !cfg.IsConfigured || busy == 1 || setup != null) return;
+        Task.Run(() =>
+        {
+            var mons = Display.GetMonitors();
+            bool tvOn = mons.Any(m => m.Active && cfg.IsTv(m.Id));
+            bool deskOn = mons.Any(m => m.Active && !cfg.IsTv(m.Id));
+            // TV desligada no modo TV: o Windows volta sozinho para os monitores; passa a valer o modo mesa.
+            if (wantTv) { if (!tvOn) wantTv = false; return; }
+            if (!tvOn || !deskOn) return;
+            if (Interlocked.Exchange(ref busy, 1) == 1) return;
+            ignoreDisplayUntil = DateTime.UtcNow.AddSeconds(4);
+            var r = switcher.ToDesk();
+            Interlocked.Exchange(ref busy, 0);
+            if (!r.Ok) ui.Post(_ => Notify(r.Message, true), null);
+        });
     }
 
     void ShowSetup()
@@ -177,8 +214,10 @@ public class TrayApp : ApplicationContext
         popup?.Hide();
         Task.Run(action).ContinueWith(t =>
         {
-            Interlocked.Exchange(ref busy, 0);
             var r = t.Result;
+            ignoreDisplayUntil = DateTime.UtcNow.AddSeconds(4);
+            if (r.Ok) wantTv = switcher.IsTvMode();
+            Interlocked.Exchange(ref busy, 0);
             ui.Post(_ =>
             {
                 lastMessage = r.Ok ? null : r.Message;
@@ -195,6 +234,8 @@ public class TrayApp : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
+        displayDebounce.Dispose();
         UnregisterHotKey(hotkeyWindow.Handle, HotkeyId);
         hotkeyWindow.DestroyHandle();
         controller.Dispose();
