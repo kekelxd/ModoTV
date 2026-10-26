@@ -30,7 +30,13 @@ public class TrayApp : ApplicationContext
     System.Windows.Forms.Timer displayDebounce;
     string lastMessage;
 
-    public TrayApp(Config cfg)
+    // Atualização (GitHub)
+    Updater.Info update;
+    bool updateBusy;
+    string updateStatus;
+    System.Windows.Forms.Timer updateTimer;
+
+    public TrayApp(Config cfg, bool justUpdated = false)
     {
         this.cfg = cfg;
         switcher = new Switcher(cfg);
@@ -41,11 +47,12 @@ public class TrayApp : ApplicationContext
         menu.Items.Add("Modo mesa", null, (_, _) => Run(switcher.ToDesk, "menu"));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Configurar TV e atalho…", null, (_, _) => ShowSetup());
+        menu.Items.Add("Procurar atualização", null, async (_, _) => await CheckUpdateAsync(manual: true));
         menu.Items.Add("Sair", null, (_, _) => ExitThread());
 
         tray = new NotifyIcon
         {
-            Icon = MakeIcon(),
+            Icon = AppIcon.Tray(),
             Text = "Modo TV",
             ContextMenuStrip = menu,
             Visible = true,
@@ -81,6 +88,48 @@ public class TrayApp : ApplicationContext
         displayDebounce.Tick += (_, _) => { displayDebounce.Stop(); GuardDesk(); };
         SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
         ui.Post(_ => GuardDesk(), null); // também ao iniciar (ex.: PC ligado com a TV já ligada)
+
+        // Procura versão nova 10 s depois de abrir e depois a cada 12 horas (uma requisição pequena).
+        updateTimer = new System.Windows.Forms.Timer { Interval = 10_000 };
+        updateTimer.Tick += async (_, _) => { updateTimer.Interval = 12 * 60 * 60 * 1000; await CheckUpdateAsync(); };
+        updateTimer.Start();
+        tray.BalloonTipClicked += (_, _) => { if (update != null && cfg.IsConfigured && (popup == null || !popup.IsVisible)) TogglePopup(); };
+        if (justUpdated) ui.Post(_ => Notify($"Modo TV atualizado para a versão {Updater.Current}."), null);
+    }
+
+    async Task CheckUpdateAsync(bool manual = false)
+    {
+        if (updateBusy) return;
+        var found = await Updater.CheckAsync();
+        bool isNew = found != null && found.Version != update?.Version;
+        update = found;
+        updateStatus = null;
+        tray.Icon = update != null ? AppIcon.TrayWithBadge() : AppIcon.Tray();
+        tray.Text = update != null ? "Modo TV — atualização disponível" : "Modo TV";
+        if (isNew)
+        {
+            Log.Write($"Atualização disponível: {found.Version}.");
+            Notify($"Atualização disponível: versão {found.Version}. Clique aqui ou no ícone para atualizar.");
+        }
+        else if (manual && update == null) Notify($"Você já tem a versão mais recente ({Updater.Current}).");
+        RefreshPopup();
+    }
+
+    async Task InstallUpdateAsync()
+    {
+        if (update == null || updateBusy) return;
+        updateBusy = true; updateStatus = $"Baixando a versão {update.Version}…"; RefreshPopup();
+        try
+        {
+            await Updater.InstallAsync(update);
+            ExitThread(); // a versão nova já foi aberta e assume daqui
+        }
+        catch (Exception ex)
+        {
+            Log.Write("Falha na atualização: " + ex.Message);
+            updateBusy = false; updateStatus = "Não deu certo: " + ex.Message; RefreshPopup();
+            Notify("Não consegui atualizar: " + ex.Message, true);
+        }
     }
 
     void OnDisplayChanged(object sender, EventArgs e)
@@ -142,6 +191,7 @@ public class TrayApp : ApplicationContext
             cfg.Save();
             RefreshPopup();
         };
+        popup.Update += async () => await InstallUpdateAsync();
         popup.SetPreset += preset =>
         {
             if (cfg.TvPreset == preset) return;
@@ -185,6 +235,9 @@ public class TrayApp : ApplicationContext
             Title = string.IsNullOrEmpty(cfg.DisplayName) ? "Modo TV" : cfg.DisplayName,
             Brand = cfg.TvBrand ?? "",
             Status = lastMessage,
+            UpdateVersion = update?.Version.ToString(),
+            UpdateStatus = updateStatus,
+            UpdateBusy = updateBusy,
         };
         try
         {
@@ -254,6 +307,7 @@ public class TrayApp : ApplicationContext
     protected override void ExitThreadCore()
     {
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
+        updateTimer?.Dispose();
         displayDebounce.Dispose();
         UnregisterHotKey(hotkeyWindow.Handle, HotkeyId);
         hotkeyWindow.DestroyHandle();
@@ -277,22 +331,6 @@ public class TrayApp : ApplicationContext
         else k.DeleteValue("ModoTV", false);
     }
 
-    static Icon MakeIcon()
-    {
-        using var bmp = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.Clear(Color.Transparent);
-            using var body = new SolidBrush(Color.FromArgb(76, 155, 255));
-            g.FillRectangle(body, 2, 5, 28, 18);
-            g.FillRectangle(Brushes.Black, 4, 7, 24, 14);
-            using var pen = new Pen(Color.FromArgb(76, 155, 255), 2.5f);
-            g.DrawLine(pen, 10, 29, 12, 23);
-            g.DrawLine(pen, 22, 29, 20, 23);
-        }
-        return Icon.FromHandle(bmp.GetHicon());
-    }
 
     class HotkeyWindow : NativeWindow
     {

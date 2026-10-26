@@ -5,13 +5,18 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
-    <Version>1.4.6</Version>
+    <Version>1.5.0</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <AssemblyName>ModoTV</AssemblyName>
     <RootNamespace>ModoTV</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationIcon>ModoTV.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="ModoTV.ico" LogicalName="ModoTV.ModoTV.ico" />
+  </ItemGroup>
 
 </Project>

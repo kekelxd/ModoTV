@@ -52,6 +52,24 @@
                     </Button>
                 </Grid>
 
+                <!-- Aviso de versão nova (GitHub) -->
+                <Border x:Name="UpdateBanner" Visibility="Collapsed" CornerRadius="12" Background="#1E3350"
+                        BorderBrush="#3A6DB3" BorderThickness="1" Padding="12,9" Margin="0,0,0,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,10,0">
+                            <TextBlock x:Name="UpdateTitle" Text="Nova versão disponível" FontWeight="SemiBold" FontSize="12.5"/>
+                            <TextBlock x:Name="UpdateText" Foreground="#9FC4F5" FontSize="11.5" TextWrapping="Wrap" Margin="0,1,0,0"/>
+                        </StackPanel>
+                        <Button x:Name="UpdateButton" Grid.Column="1" Style="{StaticResource Primary}" Width="98" VerticalAlignment="Center">
+                            <TextBlock x:Name="UpdateButtonText" Text="Atualizar" FontSize="12.5" FontWeight="SemiBold"/>
+                        </Button>
+                    </Grid>
+                </Border>
+
                 <!-- Destaque: a TV -->
                 <Border Style="{StaticResource CardBox}" Padding="12,10,12,12">
                     <StackPanel>

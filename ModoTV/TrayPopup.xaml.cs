@@ -19,17 +19,21 @@ public class PopupState
     public bool SwitchAudio, Autostart, ControllerEnabled;
     public string TvPreset = "auto", Brand = "", Subtitle = "", Title = "";
     public List<string> Presets = new();
+    public string UpdateVersion, UpdateStatus;   // versão nova disponível e "Baixando…"/erro
+    public bool UpdateBusy;
 }
 
 public partial class TrayPopup : Window
 {
     public event Action GoTv, GoDesk, Toggle, ToggleAudio, ToggleStartup, TogglePad, ShowMenu;
     public event Action<string> SetPreset;
+    public event Action Update;
     public DateTime HiddenAt { get; private set; }
 
     public TrayPopup()
     {
         InitializeComponent();
+        Icon = AppIcon.Window();
         VersionText.Text = "v" + (typeof(TrayPopup).Assembly.GetName().Version?.ToString(3) ?? "1.0.0");
         PowerButton.Click += (_, _) => Toggle?.Invoke();
         SwitchButton.Click += (_, _) => Toggle?.Invoke();
@@ -39,6 +43,7 @@ public partial class TrayPopup : Window
         StartupChip.Click += (_, _) => ToggleStartup?.Invoke();
         PadChip.Click += (_, _) => TogglePad?.Invoke();
         MoreButton.Click += (_, _) => ShowMenu?.Invoke();
+        UpdateButton.Click += (_, _) => Update?.Invoke();
         PresetA.Click += (_, _) => PickPreset(0);
         PresetB.Click += (_, _) => PickPreset(1);
         Deactivated += (_, _) => { HiddenAt = DateTime.UtcNow; Hide(); };
@@ -75,6 +80,11 @@ public partial class TrayPopup : Window
         On(AudioChip, s.SwitchAudio);
         On(StartupChip, s.Autostart);
         On(PadChip, s.ControllerEnabled);
+        UpdateBanner.Visibility = s.UpdateVersion != null ? Visibility.Visible : Visibility.Collapsed;
+        UpdateText.Text = s.UpdateStatus ?? $"Versão {s.UpdateVersion} no GitHub (você tem a {Updater.Current})";
+        UpdateButtonText.Text = s.UpdateBusy ? "Baixando…" : "Atualizar";
+        UpdateButton.IsEnabled = !s.UpdateBusy;
+
         presets = s.Presets;
         TitleText.Text = s.Title;
         SubtitleText.Text = s.Subtitle;

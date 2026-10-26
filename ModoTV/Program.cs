@@ -13,6 +13,15 @@ static class Program
     {
         var cfg = Config.Load();
 
+        // Aberto pela atualização: espera a versão antiga fechar e segue como app normal.
+        bool updated = false;
+        if (args.Length >= 2 && args[0] == "--after-update")
+        {
+            try { if (int.TryParse(args[1], out int pid)) System.Diagnostics.Process.GetProcessById(pid).WaitForExit(15_000); } catch { }
+            args = Array.Empty<string>();
+            updated = true;
+        }
+
         if (args.Length > 0)
         {
             AttachConsole(-1);
@@ -40,6 +49,7 @@ static class Program
                         Title = "TV do quarto", Subtitle = "TCL · Smart TV Pro · 52\"",
                         AudioName = tv ? "Smart TV Pro" : "Realtek", SwitchAudio = true, Autostart = true,
                         ControllerEnabled = true, PadName = "8BitDo Ultimate 2", ChordLabel = "Select + Start",
+                        UpdateVersion = args.Length > 3 ? args[3] : null,
                     }, args[1]);
                     return 0;
                 case "preview-setup":
@@ -67,6 +77,14 @@ static class Program
                     Thread.Sleep(500);
                     Console.WriteLine(sw.Status());
                     return 0;
+                case "atualizar":
+                    // Procura e instala a versão nova pela linha de comando.
+                    var info = Updater.CheckAsync().GetAwaiter().GetResult();
+                    if (info == null) { Console.WriteLine($"Já está na versão mais recente ({Updater.Current})."); return 0; }
+                    Console.WriteLine($"Atualizando {Updater.Current} → {info.Version} ({info.AssetName})…");
+                    Updater.InstallAsync(info).GetAwaiter().GetResult();
+                    Console.WriteLine("Pronto.");
+                    return 0;
                 case "teste":
                     var r = sw.ToTv();
                     Print(r);
@@ -84,8 +102,9 @@ static class Program
         Log.Write($"ModoTV {typeof(Program).Assembly.GetName().Version} iniciado.");
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Write("Erro fatal: " + e.ExceptionObject);
         Application.ThreadException += (_, e) => Log.Write("Erro na interface: " + e.Exception);
+        Updater.CleanupOld();
         ApplicationConfiguration.Initialize();
-        Application.Run(new TrayApp(cfg));
+        Application.Run(new TrayApp(cfg, updated));
         return 0;
     }
 

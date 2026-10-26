@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -21,7 +21,7 @@ public class CandidateView : INotifyPropertyChanged
     public event PropertyChangedEventHandler PropertyChanged;
 }
 
-// Tela de configuraÃ§Ã£o: detecta, o usuÃ¡rio confirma (e pode testar) e sÃ³ entÃ£o salva.
+// Tela de configuração: detecta, o usuário confirma (e pode testar) e só então salva.
 public partial class SetupWindow : Window
 {
     const string TvIcon = "M2.5,4.5 H21.5 V16.5 H2.5 Z M7.5,20 L9.5,16.5 M16.5,20 L14.5,16.5";
@@ -45,6 +45,7 @@ public partial class SetupWindow : Window
     public SetupWindow(Config cfg, Switcher switcher, ControllerWatcher pads, Func<bool> getAutostart, Action<bool> setAutostart)
     {
         InitializeComponent();
+        Icon = AppIcon.Window();
         this.cfg = cfg;
         this.switcher = switcher;
         this.pads = pads;
@@ -53,7 +54,7 @@ public partial class SetupWindow : Window
         chord = cfg.ControllerChord;
         original = (cfg.TvMonitorIds.ToList(), cfg.TvName, cfg.TvBrand, cfg.TvAudioNames.ToList(), cfg.DisplayName);
 
-        startup = !cfg.IsConfigured || getAutostart(); // primeira vez: jÃ¡ vem marcado
+        startup = !cfg.IsConfigured || getAutostart(); // primeira vez: já vem marcado
         audio = cfg.SwitchAudio;
 
         Header.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) DragMove(); };
@@ -70,7 +71,7 @@ public partial class SetupWindow : Window
         ResetChordButton.Click += (_, _) => { CancelRecording(); chord = PadNames.DefaultChord; pads.Chord = chord; UpdatePad(); };
         pads.RecordProgress += OnRecordProgress;
         pads.Recorded += OnRecorded;
-        // Atualiza o nome do controle conectado enquanto a janela estÃ¡ aberta (1x por segundo).
+        // Atualiza o nome do controle conectado enquanto a janela está aberta (1x por segundo).
         padTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         padTimer.Tick += (_, _) => UpdatePad();
         padTimer.Start();
@@ -90,7 +91,7 @@ public partial class SetupWindow : Window
         {
             Candidate = c,
             Title = Detector.Pretty(c.Monitor),
-            Detail = string.Join(" Â· ", new[]
+            Detail = string.Join(" · ", new[]
             {
                 c.Monitor.Connection,
                 c.Monitor.Inches > 0 ? $"{c.Monitor.Inches:0}\"" : null,
@@ -99,7 +100,7 @@ public partial class SetupWindow : Window
             Icon = c.LooksLikeTv ? TvIcon : MonitorIcon,
         }).ToList();
 
-        // MantÃ©m a TV jÃ¡ salva; senÃ£o, sugere a mais provÃ¡vel (sÃ³ se ela realmente parecer uma TV).
+        // Mantém a TV já salva; senão, sugere a mais provável (só se ela realmente parecer uma TV).
         var pick = views.FirstOrDefault(v => cfg.IsTv(v.Candidate.Monitor.Id))
                    ?? views.FirstOrDefault(v => v.Candidate.LooksLikeTv);
         if (pick != null) pick.Selected = true;
@@ -107,8 +108,8 @@ public partial class SetupWindow : Window
         Candidates.ItemsSource = views;
         NoneHint.Visibility = views.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         StatusText.Text = pick == null && views.Count > 0
-            ? "NÃ£o temos certeza de qual Ã© a TV. Toque nela na lista acima."
-            : "Dica: use â€œTestarâ€ para ver a imagem ir para a TV por 10 segundos antes de salvar.";
+            ? "Não temos certeza de qual é a TV. Toque nela na lista acima."
+            : "Dica: use “Testar” para ver a imagem ir para a TV por 10 segundos antes de salvar.";
         Refresh();
     }
 
@@ -125,11 +126,11 @@ public partial class SetupWindow : Window
         var tv = Selected?.Candidate.Monitor;
         var desk = monitors.Where(m => m.Available && (tv == null || m.Id != tv.Id)).ToList();
         DeskText.Text = desk.Count == 0
-            ? "Nenhum outro monitor. A TV seria a Ãºnica tela."
+            ? "Nenhum outro monitor. A TV seria a única tela."
             : string.Join(" + ", desk.Select(Detector.Pretty)) + "\nApagam no modo TV e voltam do mesmo jeito.";
 
         string tvAudio = tv == null ? null : Detector.FindTvAudio(tv);
-        AudioText.Text = tv == null ? "â€”"
+        AudioText.Text = tv == null ? "—"
             : tvAudio ?? "Procuramos quando a TV ligar (pelo nome da TV).";
 
         if (!nameEdited && tv != null) NameBox.Text = Detector.Pretty(tv);
@@ -142,7 +143,7 @@ public partial class SetupWindow : Window
         RescanButton.IsEnabled = !busy;
     }
 
-    // Copia a escolha para a configuraÃ§Ã£o (em memÃ³ria).
+    // Copia a escolha para a configuração (em memória).
     void ApplySelection()
     {
         var tv = Selected.Candidate.Monitor;
@@ -155,7 +156,7 @@ public partial class SetupWindow : Window
         cfg.SwitchAudio = audio;
         if (!string.Equals(original.ids.FirstOrDefault(), tv.Id, StringComparison.OrdinalIgnoreCase))
         {
-            // TV diferente: as resoluÃ§Ãµes salvas eram da anterior.
+            // TV diferente: as resoluções salvas eram da anterior.
             cfg.TvModes = new();
             cfg.TvPreset = "auto";
         }
@@ -166,13 +167,13 @@ public partial class SetupWindow : Window
         if (Selected == null) return;
         ApplySelection();
         busy = true; Refresh();
-        StatusText.Text = "Testando: a imagem vai para a TV por 10 segundos e volta sozinhaâ€¦";
+        StatusText.Text = "Testando: a imagem vai para a TV por 10 segundos e volta sozinha…";
         var r = await Task.Run(() => switcher.Test(10));
         busy = false; Refresh();
         Activate();
         StatusText.Text = r.Ok
-            ? "Voltamos. A imagem apareceu na TV? Se sim, clique em â€œEstÃ¡ certo, salvarâ€. Se nÃ£o, escolha outra tela."
-            : "NÃ£o deu certo: " + r.Message;
+            ? "Voltamos. A imagem apareceu na TV? Se sim, clique em “Está certo, salvar”. Se não, escolha outra tela."
+            : "Não deu certo: " + r.Message;
     }
 
     void Save()
@@ -182,7 +183,7 @@ public partial class SetupWindow : Window
         CancelRecording();
         cfg.ControllerChord = chord;
         pads.Chord = chord;
-        if (!switcher.IsTvMode()) switcher.RememberDesk(); // guarda a disposiÃ§Ã£o atual da mesa
+        if (!switcher.IsTvMode()) switcher.RememberDesk(); // guarda a disposição atual da mesa
         cfg.Save();
         setAutostart(startup);
         saved = true;
@@ -212,7 +213,7 @@ public partial class SetupWindow : Window
         recordingChord = true;
         pads.StartRecording();
         RecordText.Text = "Cancelar";
-        ChordText.Text = "Segure os botÃµes que quiserâ€¦";
+        ChordText.Text = "Segure os botões que quiser…";
         ChordHint.Text = "por 2 s";
         ChordFill.Width = 0;
     }
@@ -226,11 +227,11 @@ public partial class SetupWindow : Window
         ChordFill.Width = 0;
     }
 
-    // Os eventos chegam da thread do controle; a tela sÃ³ Ã© tocada pela thread dela.
+    // Os eventos chegam da thread do controle; a tela só é tocada pela thread dela.
     void OnRecordProgress(Pad pressed, double progress) => Dispatcher.BeginInvoke(() =>
     {
         if (!recordingChord) return;
-        ChordText.Text = PadNames.Count(pressed) >= 2 ? PadNames.Format(pressed, pads.Family) : "Segure 2 ou mais botÃµes juntosâ€¦";
+        ChordText.Text = PadNames.Count(pressed) >= 2 ? PadNames.Format(pressed, pads.Family) : "Segure 2 ou mais botões juntos…";
         ChordFill.Width = Math.Clamp(progress, 0, 1) * ChordBox.ActualWidth;
     });
 
@@ -238,7 +239,7 @@ public partial class SetupWindow : Window
     {
         recordingChord = false;
         chord = pressed;
-        pads.Chord = chord; // jÃ¡ vale para testar; sÃ³ fica salvo ao clicar em salvar
+        pads.Chord = chord; // já vale para testar; só fica salvo ao clicar em salvar
         RecordText.Text = "Gravar outro atalho";
         ChordFill.Width = 0;
         UpdatePad();

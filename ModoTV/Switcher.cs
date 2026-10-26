@@ -36,7 +36,11 @@ public class Switcher
                 if (tv == null) return new(false, "TV não detectada. Ligue a TV e tente de novo.");
 
                 bool alreadyTv = mons.Where(m => m.Active).All(m => cfg.IsTv(m.Id));
-                if (!alreadyTv) RememberDesk(mons);
+                if (!alreadyTv)
+                {
+                    RememberDesk(mons);
+                    WindowKeeper.Remember(); // onde cada janela estava, para devolver na volta
+                }
 
                 Display.Apply(new[] { tv.Id }, new Dictionary<string, Point> { [tv.Id] = Point.Empty });
                 RememberTvModes(tv.Id);
@@ -132,6 +136,7 @@ public class Switcher
                     var dev = Audio.SetDefaultMatching(d => d.Id == cfg.DeskAudioId, 5000);
                     audio = dev != null ? $" Som: {dev.Name}." : "";
                 }
+                WindowKeeper.Restore();
                 return new(true, $"Modo mesa ativo.{audio}");
             }
             catch (Exception ex) { return new(false, ex.Message); }
