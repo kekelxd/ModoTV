@@ -50,6 +50,23 @@ static class Program
                     var win = new SetupWindow(setupCfg, new Switcher(setupCfg), watcher, () => false, _ => { });
                     TrayPopup.Snapshot(win, win.Root, args[1]);
                     return 0;
+                case "diag":
+                    // Pergunta ao Windows se aceitaria ir para a TV e voltar, sem mudar nada na tela.
+                    var mons = Display.GetMonitors();
+                    var tvMon = mons.FirstOrDefault(m => cfg.IsTv(m.Id) && m.Available);
+                    if (tvMon == null) { Console.WriteLine("TV não disponível"); return 1; }
+                    Console.WriteLine("Só a TV:   " + Display.Apply(new[] { tvMon.Id }, null, validateOnly: true));
+                    var deskIds = mons.Where(m => m.Available && !cfg.IsTv(m.Id)).Select(m => m.Id).ToList();
+                    Console.WriteLine("Só a mesa: " + Display.Apply(deskIds, null, validateOnly: true));
+                    return 0;
+                case "diag-ligar":
+                    // Liga a TV como tela estendida pelo GDI (os monitores continuam ligados).
+                    var tvM = Display.GetMonitors().FirstOrDefault(m => cfg.IsTv(m.Id) && m.Available);
+                    if (tvM == null) { Console.WriteLine("TV não disponível"); return 1; }
+                    Console.WriteLine(Display.TryAttach(tvM.Id));
+                    Thread.Sleep(500);
+                    Console.WriteLine(sw.Status());
+                    return 0;
                 case "teste":
                     var r = sw.ToTv();
                     Print(r);
@@ -64,6 +81,9 @@ static class Program
 
         using var mutex = new Mutex(true, "ModoTV.SingleInstance", out bool first);
         if (!first) return 0;
+        Log.Write($"ModoTV {typeof(Program).Assembly.GetName().Version} iniciado.");
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Write("Erro fatal: " + e.ExceptionObject);
+        Application.ThreadException += (_, e) => Log.Write("Erro na interface: " + e.Exception);
         ApplicationConfiguration.Initialize();
         Application.Run(new TrayApp(cfg));
         return 0;

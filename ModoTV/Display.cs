@@ -27,6 +27,7 @@ public class MonitorInfo
 public static class Display
 {
     const uint QDC_ALL_PATHS = 0x1, QDC_ONLY_ACTIVE_PATHS = 0x2;
+    const uint SDC_TOPOLOGY_EXTEND = 0x4, SDC_VALIDATE = 0x40;
     const uint SDC_TOPOLOGY_SUPPLIED = 0x10, SDC_USE_SUPPLIED_DISPLAY_CONFIG = 0x20, SDC_APPLY = 0x80,
                SDC_SAVE_TO_DATABASE = 0x200, SDC_ALLOW_CHANGES = 0x400, SDC_ALLOW_PATH_ORDER_CHANGES = 0x2000;
     const uint PATH_ACTIVE = 0x1;
@@ -190,8 +191,11 @@ public static class Display
 
     // Deixa ativas exatamente as telas em `ids` e posiciona cada uma conforme `positions`.
     // A tela na posição (0,0) vira a principal.
-    public static void Apply(IList<string> ids, IDictionary<string, Point> positions)
+    // Deixa ativas exatamente as telas em `ids`. Com validateOnly, só pergunta ao Windows se aceitaria
+    // (nada muda na tela) e devolve os códigos de cada tentativa.
+    public static string Apply(IList<string> ids, IDictionary<string, Point> positions, bool validateOnly = false, bool extended = false)
     {
+        uint go = validateOnly ? SDC_VALIDATE : SDC_APPLY;
         var (paths, modes) = Query(QDC_ALL_PATHS);
         var identity = new Dictionary<string, string>();
         string IdOf(PathTarget t)
@@ -231,6 +235,12 @@ public static class Display
                 np.flags = PATH_ACTIVE;
                 np.source.modeInfoIdx = IDX_INVALID;
                 np.target.modeInfoIdx = IDX_INVALID;
+                // Caminhos nunca usados (ex.: depois de reinstalar o driver de vídeo) vêm com rotação e
+                // escala zeradas, valores que o Windows recusa (erro 87). Usa os padrões.
+                if (np.target.rotation == 0) np.target.rotation = 1;    // DISPLAYCONFIG_ROTATION_IDENTITY
+                if (np.target.scaling == 0) np.target.scaling = 128;    // DISPLAYCONFIG_SCALING_PREFERRED
+                np.target.refreshNum = 0; np.target.refreshDen = 0;     // deixa o Windows escolher
+                np.target.scanLineOrdering = 0;
                 selected.Add(np);
                 usedSources.Add(SourceKey(p.source));
                 found = true;
@@ -255,18 +265,60 @@ public static class Display
             arr[i].target.modeInfoIdx = Remap(arr[i].target.modeInfoIdx);
         }
 
+        // Já posiciona as telas mantidas onde devem ficar e garante uma em (0,0) (a principal).
+        // Sem isso, depois de reinstalar o driver o Windows recusa (erro 87) uma TV sozinha fora do (0,0).
+        var srcIdx = arr.Select(p => p.source.modeInfoIdx).Where(i => i != IDX_INVALID && i < newModes.Count).Distinct().ToList();
+        if (srcIdx.Count > 0)
+        {
+            var mm = newModes.ToArray();
+            foreach (var p in arr)
+            {
+                uint i = p.source.modeInfoIdx;
+                if (i == IDX_INVALID || i >= mm.Length || positions == null) continue;
+                string id = IdOf(p.target);
+                if (id != null && positions.TryGetValue(id, out var pos)) { mm[i].x = pos.X; mm[i].y = pos.Y; }
+            }
+            if (!srcIdx.Any(i => mm[i].x == 0 && mm[i].y == 0))
+            {
+                var anchor = srcIdx.OrderBy(i => mm[i].x).ThenBy(i => mm[i].y).First();
+                int dx = mm[anchor].x, dy = mm[anchor].y;
+                foreach (var i in srcIdx) { mm[i].x -= dx; mm[i].y -= dy; }
+            }
+            newModes = mm.ToList();
+        }
+
+        uint save = validateOnly ? 0 : SDC_SAVE_TO_DATABASE;
         int r = SetDisplayConfig((uint)arr.Length, arr, (uint)newModes.Count, newModes.ToArray(),
-            SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES | SDC_SAVE_TO_DATABASE);
+            go | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES | save);
+        string report = $"A={r}";
         if (r != 0)
         {
             // Plano B: deixa o Windows escolher os modos a partir do banco de configurações dele.
-            for (int i = 0; i < arr.Length; i++) { arr[i].source.modeInfoIdx = IDX_INVALID; arr[i].target.modeInfoIdx = IDX_INVALID; }
-            int r2 = SetDisplayConfig((uint)arr.Length, arr, 0, null, SDC_APPLY | SDC_TOPOLOGY_SUPPLIED | SDC_ALLOW_PATH_ORDER_CHANGES);
-            if (r2 != 0) throw new InvalidOperationException($"O Windows recusou a troca de telas (erros {r} e {r2}).");
+            var b = (PathInfo[])arr.Clone();
+            for (int i = 0; i < b.Length; i++) { b[i].source.modeInfoIdx = IDX_INVALID; b[i].target.modeInfoIdx = IDX_INVALID; }
+            int r2 = SetDisplayConfig((uint)b.Length, b, 0, null, go | SDC_TOPOLOGY_SUPPLIED | SDC_ALLOW_PATH_ORDER_CHANGES);
+            report += $" B={r2}";
+            if (r2 != 0)
+            {
+                // Plano C: quando o Windows não tem nada salvo para essa tela (ex.: driver de vídeo
+                // reinstalado), liga as que faltam pelo método clássico do GDI, ao lado das atuais, e
+                // refaz a escolha com elas já ativas.
+                var missing = wanted.Where(id => !done.Contains(id)).ToList();
+                // O teste do GDI (CDS_TEST) falha para telas desligadas mesmo quando ligar funciona.
+                if (validateOnly) return report + " C=(só dá para testar aplicando)";
+                string why = ""; bool attached = !extended && missing.Count > 0 && missing.All(id => AttachViaGdi(id, validateOnly, out why));
+                report += $" C={(attached ? "ok" : "falhou: " + why)}";
+                if (validateOnly) return report;
+                if (!attached) throw new InvalidOperationException($"O Windows recusou a troca de telas ({report}).");
+                Thread.Sleep(800);
+                return report + " → " + Apply(ids, positions, false, extended: true);
+            }
         }
+        if (validateOnly) return report;
 
         Thread.Sleep(400);
         Reposition(positions);
+        return report;
     }
 
     static void Reposition(IDictionary<string, Point> positions)
@@ -321,6 +373,83 @@ public static class Display
             if (DisplayConfigGetDeviceInfo(ref req) == 0) return req.gdiName;
         }
         return null;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern bool EnumDisplayDevices(string device, uint index, ref DisplayDevice dd, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int ChangeDisplaySettingsEx(string device, IntPtr dm, IntPtr hwnd, uint flags, IntPtr param);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct DisplayDevice
+    {
+        public int cb;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string name;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string description;
+        public int stateFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string id;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string key;
+    }
+
+    public static string TryAttach(string monitorId) => AttachViaGdi(monitorId, false, out var why) ? "ligou: " + why : "falhou: " + why;
+
+    // Liga uma tela desligada à direita das atuais, pelo GDI (ChangeDisplaySettingsEx).
+    // Funciona mesmo sem configuração salva, porque a gente informa a resolução e a posição.
+    static bool AttachViaGdi(string monitorId, bool testOnly, out string why)
+    {
+        why = "";
+        // Saída de vídeo ainda não usada que enxerga essa tela.
+        string gdi = null;
+        for (uint i = 0; i < 32 && gdi == null; i++)
+        {
+            var a = new DisplayDevice { cb = Marshal.SizeOf<DisplayDevice>() };
+            if (!EnumDisplayDevices(null, i, ref a, 0)) break;
+            if ((a.stateFlags & 0x1) != 0) continue; // já faz parte da área de trabalho
+            for (uint j = 0; j < 8; j++)
+            {
+                var m = new DisplayDevice { cb = a.cb };
+                if (!EnumDisplayDevices(a.name, j, ref m, 1)) break;
+                var parts = (m.id ?? "").Split('#');
+                if (parts.Length > 1 && string.Equals(parts[1], monitorId, StringComparison.OrdinalIgnoreCase)) { gdi = a.name; break; }
+            }
+        }
+        if (gdi == null) { why = "nenhuma saída livre enxerga a tela"; return false; }
+
+        // Resolução: a maior 16:9 a 60 Hz ou mais (ex.: 4K 60); a escolhida no painel é aplicada depois.
+        DevMode? best = null;
+        for (int i = 0; ; i++)
+        {
+            var dm = new DevMode { size = (short)Marshal.SizeOf<DevMode>() };
+            if (!EnumDisplaySettings(gdi, i, ref dm)) break;
+            if ((dm.displayFlags & 0x2) != 0 || dm.pelsWidth * 9 != dm.pelsHeight * 16 || dm.displayFrequency < 59) continue;
+            if (best == null || (long)dm.pelsWidth * dm.pelsHeight > (long)best.Value.pelsWidth * best.Value.pelsHeight
+                || (dm.pelsWidth == best.Value.pelsWidth && dm.displayFrequency == 60 && best.Value.displayFrequency != 60)
+                || (dm.pelsWidth == best.Value.pelsWidth && dm.bitsPerPel > best.Value.bitsPerPel))
+                best = dm;
+        }
+        if (best == null) { why = $"nenhum modo 16:9 em {gdi}"; return false; }
+
+        // Posição: logo à direita da área de trabalho atual.
+        int right = 0;
+        try
+        {
+            var (paths, modes) = Query(QDC_ONLY_ACTIVE_PATHS);
+            foreach (var p in paths)
+                if (p.source.modeInfoIdx < modes.Length)
+                    right = Math.Max(right, modes[p.source.modeInfoIdx].x + (int)modes[p.source.modeInfoIdx].width);
+        }
+        catch { }
+
+        var target = best.Value;
+        target.positionX = right;
+        target.positionY = 0;
+        target.fields = 0x20 | 0x40000 | 0x80000 | 0x100000 | 0x400000; // POSITION | BITSPERPEL | PELSWIDTH | PELSHEIGHT | DISPLAYFREQUENCY
+        // CDS_TEST só pergunta; senão grava (UPDATEREGISTRY | NORESET) e aplica tudo de uma vez.
+        int r = ChangeDisplaySettingsEx(gdi, ref target, IntPtr.Zero, testOnly ? 0x2u : 0x1u | 0x10000000u, IntPtr.Zero);
+        why = $"{gdi} {target.pelsWidth}x{target.pelsHeight}@{target.displayFrequency} em x={right}: código {r}";
+        if (r != 0) return false;
+        if (testOnly) return true;
+        return ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero) == 0;
     }
 
     // Modos progressivos que uma tela ativa oferece, no formato "LxA@Hz".

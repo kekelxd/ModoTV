@@ -16,7 +16,13 @@ public class Switcher
         return active.Count > 0 && active.All(m => cfg.IsTv(m.Id));
     }
 
-    public Result Toggle() => IsTvMode() ? ToDesk() : ToTv();
+    public Result Toggle()
+    {
+        bool tv;
+        try { tv = IsTvMode(); }
+        catch (Exception ex) { return new(false, "Não consegui ler as telas: " + ex.Message); }
+        return tv ? ToDesk() : ToTv();
+    }
 
     public Result ToTv()
     {

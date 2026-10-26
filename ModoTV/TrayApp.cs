@@ -37,8 +37,8 @@ public class TrayApp : ApplicationContext
         ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
         menu = new ContextMenuStrip();
-        menu.Items.Add("Modo TV", null, (_, _) => Run(switcher.ToTv));
-        menu.Items.Add("Modo mesa", null, (_, _) => Run(switcher.ToDesk));
+        menu.Items.Add("Modo TV", null, (_, _) => Run(switcher.ToTv, "menu"));
+        menu.Items.Add("Modo mesa", null, (_, _) => Run(switcher.ToDesk, "menu"));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Configurar TV e atalho…", null, (_, _) => ShowSetup());
         menu.Items.Add("Sair", null, (_, _) => ExitThread());
@@ -56,12 +56,19 @@ public class TrayApp : ApplicationContext
             if (cfg.IsConfigured) TogglePopup(); else ShowSetup();
         };
 
-        hotkeyWindow = new HotkeyWindow(() => Run(switcher.Toggle));
+        hotkeyWindow = new HotkeyWindow(() => Run(switcher.Toggle, "Ctrl+Alt+F11"));
         if (!RegisterHotKey(hotkeyWindow.Handle, HotkeyId, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_F11))
+        {
+            Log.Write("Ctrl+Alt+F11 já está em uso por outro programa.");
             Notify("Ctrl+Alt+F11 já está em uso por outro programa. O controle e o painel continuam funcionando.", true);
+        }
 
         controller = new ControllerWatcher { HoldMs = cfg.ControllerHoldMs, Enabled = cfg.ControllerEnabled, Chord = cfg.ControllerChord };
-        controller.Triggered += () => ui.Post(_ => Run(switcher.Toggle), null);
+        controller.Triggered += () =>
+        {
+            Log.Write($"Atalho do controle segurado ({controller.ConnectedName}).");
+            ui.Post(_ => Run(switcher.Toggle, "controle"), null);
+        };
 
         // Primeira execução: abre a configuração. Depois, só guarda a disposição da mesa se faltar.
         if (!cfg.IsConfigured) ui.Post(_ => ShowSetup(), null);
@@ -87,16 +94,21 @@ public class TrayApp : ApplicationContext
         if (!cfg.KeepTvOffAtDesk || !cfg.IsConfigured || busy == 1 || setup != null) return;
         Task.Run(() =>
         {
-            var mons = Display.GetMonitors();
+            List<MonitorInfo> mons;
+            try { mons = Display.GetMonitors(); } catch (Exception ex) { Log.Write("Falha ao ler as telas: " + ex.Message); return; }
             bool tvOn = mons.Any(m => m.Active && cfg.IsTv(m.Id));
             bool deskOn = mons.Any(m => m.Active && !cfg.IsTv(m.Id));
             // TV desligada no modo TV: o Windows volta sozinho para os monitores; passa a valer o modo mesa.
             if (wantTv) { if (!tvOn) wantTv = false; return; }
             if (!tvOn || !deskOn) return;
             if (Interlocked.Exchange(ref busy, 1) == 1) return;
+            Log.Write("Windows reativou a TV no modo mesa; desligando de novo.");
             ignoreDisplayUntil = DateTime.UtcNow.AddSeconds(4);
-            var r = switcher.ToDesk();
-            Interlocked.Exchange(ref busy, 0);
+            Result r;
+            try { r = switcher.ToDesk(); }
+            catch (Exception ex) { r = new(false, ex.Message); }
+            finally { Interlocked.Exchange(ref busy, 0); }
+            Log.Write($"Modo mesa restaurado: {(r.Ok ? "ok" : "falhou")} — {r.Message}");
             if (!r.Ok) ui.Post(_ => Notify(r.Message, true), null);
         });
     }
@@ -207,17 +219,24 @@ public class TrayApp : ApplicationContext
 
     // ---------- Troca ----------
 
-    void Run(Func<Result> action)
+    void Run(Func<Result> action, string origin = "")
     {
-        if (Interlocked.Exchange(ref busy, 1) == 1) return;
+        if (Interlocked.Exchange(ref busy, 1) == 1) { Log.Write($"Troca ignorada ({origin}): outra troca em andamento."); return; }
+        Log.Write($"Troca pedida ({origin}).");
         SystemSounds.Asterisk.Play(); // aviso sonoro: útil quando a tela está apagada
         popup?.Hide();
-        Task.Run(action).ContinueWith(t =>
+        Task.Run(() =>
         {
-            var r = t.Result;
-            ignoreDisplayUntil = DateTime.UtcNow.AddSeconds(4);
-            if (r.Ok) wantTv = switcher.IsTvMode();
-            Interlocked.Exchange(ref busy, 0);
+            Result r;
+            try
+            {
+                r = action();
+                ignoreDisplayUntil = DateTime.UtcNow.AddSeconds(4);
+                if (r.Ok) wantTv = switcher.IsTvMode();
+            }
+            catch (Exception ex) { r = new(false, ex.Message); Log.Write("Erro na troca: " + ex); }
+            finally { Interlocked.Exchange(ref busy, 0); }
+            Log.Write($"Troca terminou ({origin}): {(r.Ok ? "ok" : "falhou")} — {r.Message}");
             ui.Post(_ =>
             {
                 lastMessage = r.Ok ? null : r.Message;
