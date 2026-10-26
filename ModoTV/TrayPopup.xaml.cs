@@ -83,7 +83,12 @@ public partial class TrayPopup : Window
         FillPreset(PresetB, PresetBRes, PresetBHz, 1, s.TvPreset);
         PresetGrid.Columns = Math.Max(1, presets.Count);
         PresetGrid.Visibility = presets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        PresetHint.Visibility = presets.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        // Só uma opção = a TV não está anunciando nada acima de 60 Hz (configuração de HDMI da TV).
+        PresetHint.Text = presets.Count == 0
+            ? "As opções aparecem depois da primeira vez no modo TV. Até lá, a TV usa a resolução recomendada pelo Windows."
+            : "A TV só está oferecendo até 60 Hz. Para 120 Hz, ative o modo HDMI 2.1 / avançado dessa entrada nas configurações da TV.";
+        PresetHint.Margin = new Thickness(0, presets.Count == 1 ? 6 : 0, 0, 0);
+        PresetHint.Visibility = presets.Count >= 2 ? Visibility.Collapsed : Visibility.Visible;
         PresetA.IsEnabled = PresetB.IsEnabled = !s.Busy;
 
         ScreenOn.Opacity = tv ? 1 : 0;
