@@ -85,6 +85,16 @@ static class Program
                     Updater.InstallAsync(info).GetAwaiter().GetResult();
                     Console.WriteLine("Pronto.");
                     return 0;
+                case "configurar":
+                    // Abre só a tela de configuração (sem a bandeja).
+                    new SetupWindow(cfg, sw, new ControllerWatcher(), () => false, _ => { }).ShowDialog();
+                    return 0;
+                case "icone":
+                    // Salva o ícone da bandeja (normal e com aviso) como PNG, para conferir.
+                    Console.WriteLine($"Tamanho pedido pela bandeja: {SystemInformation.SmallIconSize}");
+                    using (var ic = AppIcon.Tray()) { Console.WriteLine($"Ícone: {ic.Width}x{ic.Height}"); ic.ToBitmap().Save(args[1] + "-normal.png"); }
+                    using (var ib = AppIcon.TrayWithBadge()) ib.ToBitmap().Save(args[1] + "-aviso.png");
+                    return 0;
                 case "teste":
                     var r = sw.ToTv();
                     Print(r);
